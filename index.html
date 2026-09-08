@@ -1,0 +1,1290 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistem Administrasi FKKG Kecamatan Prambon</title>
+  
+  <!-- Tailwind CSS & Lucide Icons -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              600: '#0284c7',
+              700: '#0369a1',
+              800: '#075985',
+              900: '#0c4a6e'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Kanvas Riak Air */
+    #water-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* Standar Kertas A4 & Aturan Margin Kedinasan */
+    .preview-paper {
+      width: 210mm;
+      min-height: 297mm;
+      padding: 12mm 20mm 20mm 25mm; /* Atas 1.2cm, Kanan 2cm, Bawah 2cm, Kiri 2.5cm */
+      margin: 0 auto;
+      background: white;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+      font-family: 'Times New Roman', Times, serif;
+      color: #000;
+      line-height: 1.35;
+      font-size: 11.5pt;
+    }
+
+    /* Modal Pop-up */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      background-color: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.active {
+      display: flex !important;
+    }
+
+    @media print {
+      body * { visibility: hidden; }
+      #printable-area, #printable-area * { visibility: visible; }
+      #printable-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 12mm 20mm 20mm 25mm !important;
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100 min-h-screen flex flex-col transition-colors duration-300">
+  <!-- Kanvas Riak Air -->
+  <canvas id="water-canvas"></canvas>
+
+  <!-- Navbar Atas -->
+  <header class="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-sky-700 text-white flex items-center justify-center font-bold text-xl shadow-md">
+          <i data-lucide="book-open"></i>
+        </div>
+        <div>
+          <h1 class="font-bold text-base sm:text-lg leading-tight text-slate-900 dark:text-white">FKKG KEC. PRAMBON</h1>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Kabupaten Sidoarjo &bull; Sistem Administrasi Terpadu</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Status & Tombol Login Bendahara -->
+        <div id="bendahara-auth-container">
+          <button id="btn-login-bendahara" onclick="openLoginModal()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 text-amber-800 dark:bg-amber-950 dark:text-amber-300 text-xs font-semibold border border-amber-300 dark:border-amber-800 hover:bg-amber-100 transition shadow-sm">
+            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+            <span>Masuk Bendahara</span>
+          </button>
+
+          <div id="bendahara-logged-badge" class="hidden items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 text-xs font-semibold border border-emerald-300 dark:border-emerald-800 shadow-sm">
+            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
+            <span>Bendahara: Full Akses</span>
+            <button onclick="logoutBendahara()" title="Keluar Sesi Bendahara" class="ml-1 px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 hover:bg-rose-200 text-[10px] font-bold transition">
+              Keluar
+            </button>
+          </div>
+        </div>
+
+        <!-- Tombol Sinkronisasi Sheets -->
+        <button onclick="syncAllToCloud()" title="Sinkronkan ke Google Sheet" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-950 dark:text-sky-300 border border-sky-200 dark:border-sky-800 transition">
+          <i data-lucide="cloud-upload" class="w-4 h-4"></i>
+          <span class="hidden sm:inline" id="sync-status-text">Simpan ke Sheets</span>
+        </button>
+
+        <!-- Mode Siang/Malam -->
+        <button id="theme-toggle" class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition">
+          <i data-lucide="moon" id="theme-icon" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Navigasi Tab Menu -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-1 sm:space-x-4 border-t border-slate-100 dark:border-slate-800/60 overflow-x-auto">
+      <button onclick="switchTab('surat')" class="tab-btn py-3 px-3 text-sm font-semibold border-b-2 border-sky-600 text-sky-600 dark:text-sky-400 flex items-center gap-2 whitespace-nowrap" id="tab-surat">
+        <i data-lucide="file-text" class="w-4 h-4"></i> Generate Surat Undangan
+      </button>
+      <button onclick="switchTab('keuangan')" class="tab-btn py-3 px-3 text-sm font-semibold border-b-2 border-transparent text-slate-600 dark:text-slate-400 hover:text-sky-600 flex items-center gap-2 whitespace-nowrap" id="tab-keuangan">
+        <i data-lucide="wallet" class="w-4 h-4"></i> Buku Keuangan (Kas)
+      </button>
+      <button onclick="switchTab('kepanitiaan')" class="tab-btn py-3 px-3 text-sm font-semibold border-b-2 border-transparent text-slate-600 dark:text-slate-400 hover:text-sky-600 flex items-center gap-2 whitespace-nowrap" id="tab-kepanitiaan">
+        <i data-lucide="users" class="w-4 h-4"></i> Kepanitiaan / Pengurus
+      </button>
+      <button onclick="switchTab('program')" class="tab-btn py-3 px-3 text-sm font-semibold border-b-2 border-transparent text-slate-600 dark:text-slate-400 hover:text-sky-600 flex items-center gap-2 whitespace-nowrap" id="tab-program">
+        <i data-lucide="calendar" class="w-4 h-4"></i> Program Kegiatan
+      </button>
+    </div>
+  </header>
+
+  <!-- KONTEN UTAMA -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+    
+    <!-- ==================== TAB 1: GENERATE SURAT UNDANGAN ==================== -->
+    <div id="view-surat" class="space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Formulir Parameter Surat -->
+        <div class="lg:col-span-4 bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+          <div class="border-b border-slate-100 dark:border-slate-800 pb-3">
+            <h2 class="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+              <i data-lucide="sliders" class="w-4 h-4 text-sky-600"></i> Pengaturan Surat Undangan
+            </h2>
+            <p class="text-xs text-slate-500">Ketua & Sekretaris otomatis tersinkron dari tab Kepanitiaan.</p>
+          </div>
+
+          <div class="space-y-3 text-xs">
+            <div>
+              <label class="block font-medium mb-1">Nomor Surat</label>
+              <input type="text" id="inp-no-surat" value="13/UND/FKKG-SD/IX/2026" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono" oninput="updateLetterPreview()">
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block font-medium mb-1">Tanggal Surat</label>
+                <input type="text" id="inp-tgl-surat" value="7 September 2026" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" oninput="updateLetterPreview()">
+              </div>
+              <div>
+                <label class="block font-medium mb-1">Lampiran</label>
+                <input type="text" id="inp-lampiran" value="1 ( satu ) lembar" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" oninput="updateLetterPreview()">
+              </div>
+            </div>
+
+            <div>
+              <label class="block font-medium mb-1">Perihal</label>
+              <input type="text" id="inp-perihal" value="Undangan Rapat Pembentukan Pengurus Baru FKKG" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" oninput="updateLetterPreview()">
+            </div>
+
+            <div class="border-t border-slate-100 dark:border-slate-800 pt-2 font-semibold text-slate-700 dark:text-slate-300">
+              Pelaksanaan Kegiatan:
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block font-medium mb-1">Hari</label>
+                <input type="text" id="inp-hari" value="Selasa" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" oninput="updateLetterPreview()">
+              </div>
+              <div>
+                <label class="block font-medium mb-1">Tanggal Kegiatan</label>
+                <input type="text" id="inp-tgl-kegiatan" value="8 Juni 2026" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" oninput="updateLetterPreview()">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block font-medium mb-1">Waktu</label>
+                <input type="text" id="inp-waktu" value="09.00 WIB" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" oninput="updateLetterPreview()">
+              </div>
+              <div>
+                <label class="block font-medium mb-1">Tempat</label>
+                <input type="text" id="inp-tempat" value="SDN Kedungwonokerto" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" oninput="updateLetterPreview()">
+              </div>
+            </div>
+
+            <div>
+              <label class="block font-medium mb-1">Agenda / Acara</label>
+              <input type="text" id="inp-acara" value="Pembentukan Pengurus FKKG baru Kecamatan Prambon" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" oninput="updateLetterPreview()">
+            </div>
+
+            <div class="border-t border-slate-100 dark:border-slate-800 pt-2 font-semibold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <span>Penandatangan:</span>
+              <span class="text-[10px] text-emerald-600 dark:text-emerald-400 font-normal flex items-center gap-1">
+                <i data-lucide="refresh-cw" class="w-3 h-3"></i> Auto Sinkron Panitia
+              </span>
+            </div>
+
+            <!-- KETUA FKKG: OTOMATIS TERSINKRON DARI KEPANITIAAN -->
+            <div class="bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
+              <label class="block font-medium mb-1 text-slate-700 dark:text-slate-300">Ketua FKKG (Otomatis)</label>
+              <input type="text" id="inp-ketua" readonly class="w-full px-3 py-1.5 mb-1 rounded bg-slate-100 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 font-semibold text-slate-800 dark:text-slate-200 cursor-not-allowed">
+              <input type="text" id="inp-nip-ketua" readonly class="w-full px-3 py-1.5 rounded bg-slate-100 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 font-mono text-slate-600 dark:text-slate-300 cursor-not-allowed" placeholder="NIP Ketua">
+            </div>
+
+            <!-- SEKRETARIS / WAKIL: OTOMATIS TERSINKRON DARI KEPANITIAAN -->
+            <div class="bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
+              <label class="block font-medium mb-1 text-slate-700 dark:text-slate-300">Sekretaris / Wakil (Otomatis)</label>
+              <input type="text" id="inp-sekretaris" readonly class="w-full px-3 py-1.5 mb-1 rounded bg-slate-100 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 font-semibold text-slate-800 dark:text-slate-200 cursor-not-allowed">
+              <input type="text" id="inp-nip-sekretaris" readonly class="w-full px-3 py-1.5 rounded bg-slate-100 dark:bg-slate-700/60 border border-slate-200 dark:border-slate-600 font-mono text-slate-600 dark:text-slate-300 cursor-not-allowed" placeholder="NIP Sekretaris">
+            </div>
+
+            <div>
+              <label class="block font-medium mb-1">Ketua K3S Prambon (Nama & NIP)</label>
+              <input type="text" id="inp-k3s" value="SUKARTO, S.Pd. M.Si" class="w-full px-3 py-2 mb-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800" oninput="updateLetterPreview()">
+              <input type="text" id="inp-nip-k3s" value="196710071992021002" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono" placeholder="NIP K3S" oninput="updateLetterPreview()">
+            </div>
+          </div>
+
+          <!-- Tombol Download DOC & Print -->
+          <div class="pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-col gap-2">
+            <button onclick="downloadWordDoc()" class="w-full py-2.5 px-4 bg-sky-700 hover:bg-sky-800 text-white font-semibold rounded-lg shadow flex items-center justify-center gap-2 text-sm transition">
+              <i data-lucide="download"></i> Download Format Word (.doc) Rapi
+            </button>
+            <button onclick="window.print()" class="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-medium rounded-lg flex items-center justify-center gap-2 text-xs transition">
+              <i data-lucide="printer"></i> Cetak / Simpan PDF
+            </button>
+          </div>
+        </div>
+
+        <!-- Pratinjau Surat Resmi A4 Presisi Sesuai Berkas Asli -->
+        <div class="lg:col-span-8 overflow-x-auto bg-slate-200/60 dark:bg-slate-900/50 p-4 rounded-xl flex justify-center">
+          <div id="printable-area" class="preview-paper">
+            
+            <!-- KOP SURAT BERGAMBAR RESMI PATEN PERMANEN -->
+            <div style="margin-bottom: 12px; pointer-events: none; user-select: none;">
+              <img id="kop-img-preview" src="" alt="Kop Surat FKKG Prambon" style="width: 100%; height: auto; display: block; margin: 0 auto;">
+            </div>
+
+            <!-- Tanggal Surat Sebelah Kanan -->
+            <div style="text-align: right; margin-bottom: 12px;">
+              Prambon, <span id="lbl-tgl-surat">7 September 2026</span>
+            </div>
+
+            <!-- Nomor, Lampiran, Hal & Tujuan Surat -->
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: 11.5pt;">
+              <tr>
+                <td style="width: 15%; vertical-align: top;">Nomor</td>
+                <td style="width: 3%; vertical-align: top;">:</td>
+                <td style="width: 37%; vertical-align: top;" id="lbl-no-surat">13/UND/FKKG-SD/IX/2026</td>
+                <td style="width: 45%; vertical-align: top; padding-left: 20px;" rowspan="3">
+                  Kepada<br>
+                  Yth. Bapak/Ibu Kepala Sekolah<br>
+                  SD Negeri/Swasta Se-Kecamatan Prambon<br>
+                  di<br>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Prambon
+                </td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Lampiran</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top;" id="lbl-lampiran">1 ( satu ) lembar</td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Perihal</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top; font-weight: 500;" id="lbl-perihal">Undangan Rapat Pembentukan Pengurus Baru FKKG</td>
+              </tr>
+            </table>
+
+            <!-- Salam & Pembuka -->
+            <div style="margin-bottom: 12px;">Dengan hormat,</div>
+            <div style="text-align: justify; text-indent: 36px; margin-bottom: 14px; line-height: 1.4;">
+              Dalam rangka keberlanjutan dan peningkatan kegiatan Forum Kelompok Kerja Guru ( FKKG ) Guru SD Kecamatan Prambon, serta sehubungan dengan akan dilaksanakannya pembentukan kepengurusan FKKG yang baru, kami mohon kepada Bapak/Ibu Kepala Sekolah untuk memberikan izin dan menugaskan nama-nama guru sebagaimana terlampir agar dapat hadir dan mengikuti kegiatan tersebut yang akan dilaksanakan pada :
+            </div>
+
+            <!-- Detail Pelaksanaan Acara -->
+            <table style="width: 100%; margin-left: 36px; border-collapse: collapse; margin-bottom: 14px; line-height: 1.45;">
+              <tr>
+                <td style="width: 90px; vertical-align: top;">Hari</td>
+                <td style="width: 20px; vertical-align: top;">:</td>
+                <td style="vertical-align: top;" id="lbl-hari">Selasa</td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Tanggal</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top;" id="lbl-tgl-kegiatan">8 Juni 2026</td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Waktu</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top;" id="lbl-waktu">09.00 WIB</td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Tempat</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top;" id="lbl-tempat">SDN Kedungwonokerto</td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Acara</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top; font-weight: 500;" id="lbl-acara">Pembentukan Pengurus FKKG baru Kecamatan Prambon</td>
+              </tr>
+            </table>
+
+            <!-- Penutup Surat -->
+            <div style="text-align: justify; text-indent: 36px; margin-bottom: 30px; line-height: 1.4;">
+              Demikian surat undangan ini kami sampaikan, atas perhatian dan kerja samanya kami ucapkan terima kasih.
+            </div>
+
+            <!-- Tanda Tangan: Ketua & Sekretaris (Auto Sinkron) -->
+            <table style="width: 100%; border-collapse: collapse; text-align: center; margin-bottom: 25px;">
+              <tr>
+                <td style="width: 45%; vertical-align: top;">
+                  Ketua FKKG Kec. Prambon<br><br><br><br><br>
+                  <strong style="text-decoration: underline;" id="lbl-ketua">EKO FERRY DARYANTO, S.Pd</strong><br>
+                  NIP. <span id="lbl-nip-ketua">198201262008011010</span>
+                </td>
+                <td style="width: 10%; vertical-align: middle;">
+                  <!-- Stempel FKKG -->
+                  <div style="width: 75px; height: 75px; border: 2px dashed #0284c7; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #0284c7; font-size: 8pt; margin: 0 auto; opacity: 0.7;">
+                    Stempel FKKG
+                  </div>
+                </td>
+                <td style="width: 45%; vertical-align: top;">
+                  Sekretaris<br><br><br><br><br>
+                  <strong style="text-decoration: underline;" id="lbl-sekretaris">RURY MEIYANTY, S.Pd</strong><br>
+                  NIP. <span id="lbl-nip-sekretaris">198205132011012010</span>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Mengetahui K3S Kecamatan Prambon -->
+            <table style="width: 100%; border-collapse: collapse; text-align: center;">
+              <tr>
+                <td style="width: 25%;"></td>
+                <td style="width: 50%; vertical-align: top;">
+                  Mengetahui<br>
+                  Ketua FKKKS / K3S Kecamatan Prambon<br><br><br><br><br>
+                  <strong style="text-decoration: underline;" id="lbl-k3s">SUKARTO, S.Pd. M.Si</strong><br>
+                  NIP. <span id="lbl-nip-k3s">196710071992021002</span>
+                </td>
+                <td style="width: 25%;"></td>
+              </tr>
+            </table>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+
+    <!-- ==================== TAB 2: BUKU KEUANGAN ==================== -->
+    <div id="view-keuangan" class="hidden space-y-6">
+      
+      <!-- Ringkasan Saldo Kas -->
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <span class="text-xs font-medium text-slate-500">Total Kas Masuk</span>
+          <h3 class="text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1" id="total-masuk">Rp 0</h3>
+        </div>
+        <div class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <span class="text-xs font-medium text-slate-500">Total Pengeluaran</span>
+          <h3 class="text-2xl font-bold text-rose-600 dark:text-rose-400 mt-1" id="total-keluar">Rp 0</h3>
+        </div>
+        <div class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <span class="text-xs font-medium text-slate-500">Sisa Saldo Kas</span>
+          <h3 class="text-2xl font-bold text-sky-600 dark:text-sky-400 mt-1" id="saldo-akhir">Rp 0</h3>
+        </div>
+      </div>
+
+      <!-- Tombol Aksi Keuangan -->
+      <div class="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+        <div>
+          <h2 class="font-bold text-base text-slate-900 dark:text-white">Buku Catatan Keuangan Kas</h2>
+          <p class="text-xs text-slate-500">Pencatatan dan penghapusan kas diproteksi hak akses Bendahara.</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="handleBtnCatat('MASUK')" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow transition">
+            <i data-lucide="plus-circle" class="w-4 h-4"></i> Catat Pemasukan
+          </button>
+          <button onclick="handleBtnCatat('KELUAR')" class="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow transition">
+            <i data-lucide="minus-circle" class="w-4 h-4"></i> Catat Pengeluaran
+          </button>
+        </div>
+      </div>
+
+      <!-- Tabel Transaksi Kas -->
+      <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 uppercase font-semibold">
+              <tr>
+                <th class="py-3 px-4">Tanggal</th>
+                <th class="py-3 px-4">Keterangan</th>
+                <th class="py-3 px-4">Kategori</th>
+                <th class="py-3 px-4 text-right">Pemasukan</th>
+                <th class="py-3 px-4 text-right">Pengeluaran</th>
+                <th class="py-3 px-4 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-keuangan-body" class="divide-y divide-slate-100 dark:divide-slate-800">
+              <!-- Baris kas dinamis -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+
+    <!-- ==================== TAB 3: KEPANITIAAN ==================== -->
+    <div id="view-kepanitiaan" class="hidden space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+        <div>
+          <h2 class="font-bold text-base text-slate-900 dark:text-white">Daftar Kepanitiaan & Pengurus FKKG</h2>
+          <p class="text-xs text-slate-500">Perubahan Ketua & Sekretaris di sini otomatis mengupdate Surat Undangan.</p>
+        </div>
+        <button onclick="openModal('modal-kepanitiaan')" class="px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow transition">
+          <i data-lucide="user-plus" class="w-4 h-4"></i> Tambah Anggota
+        </button>
+      </div>
+
+      <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 uppercase font-semibold">
+              <tr>
+                <th class="py-3 px-4">Nama Lengkap</th>
+                <th class="py-3 px-4">Jabatan</th>
+                <th class="py-3 px-4">Asal Sekolah</th>
+                <th class="py-3 px-4">NIP</th>
+                <th class="py-3 px-4">No. HP / WhatsApp</th>
+                <th class="py-3 px-4 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-kepanitiaan-body" class="divide-y divide-slate-100 dark:divide-slate-800">
+              <!-- Baris panitia dinamis -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ==================== TAB 4: PROGRAM KEGIATAN ==================== -->
+    <div id="view-program" class="hidden space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+        <div>
+          <h2 class="font-bold text-base text-slate-900 dark:text-white">Program Kerja Kegiatan (Semester & Tahunan)</h2>
+          <p class="text-xs text-slate-500">Perencanaan kegiatan FKKG Prambon beserta estimasi waktu dan anggaran.</p>
+        </div>
+        <button onclick="openModal('modal-program')" class="px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow transition">
+          <i data-lucide="calendar-plus" class="w-4 h-4"></i> Tambah Program
+        </button>
+      </div>
+
+      <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 uppercase font-semibold">
+              <tr>
+                <th class="py-3 px-4">Nama Kegiatan</th>
+                <th class="py-3 px-4">Semester</th>
+                <th class="py-3 px-4">Tahun Ajaran</th>
+                <th class="py-3 px-4">Waktu</th>
+                <th class="py-3 px-4">Estimasi Anggaran</th>
+                <th class="py-3 px-4">Status</th>
+                <th class="py-3 px-4 text-center">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="tbl-program-body" class="divide-y divide-slate-100 dark:divide-slate-800">
+              <!-- Baris program kegiatan dinamis -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+
+  <!-- ==================== MODAL LOGIN BENDAHARA ==================== -->
+  <div id="modal-bendahara" class="modal-overlay">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 text-center">
+      <div class="w-12 h-12 bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm">
+        <i data-lucide="shield-check" class="w-6 h-6"></i>
+      </div>
+      <h3 class="font-bold text-lg text-slate-900 dark:text-white">Masuk Sebagai Bendahara</h3>
+      <p class="text-xs text-slate-500 mt-1 mb-4">Masukkan password bendahara untuk full akses menginput & menghapus kas.</p>
+      
+      <div class="mb-3">
+        <input type="password" id="inp-bendahara-pass" placeholder="Ketik Password..." class="w-full px-3 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-center font-mono text-sm focus:ring-2 focus:ring-sky-500">
+      </div>
+      <p id="msg-bendahara-error" class="text-rose-500 text-xs hidden mb-3 font-medium">Password salah! Silakan coba lagi.</p>
+
+      <div class="flex gap-2">
+        <button type="button" onclick="closeModal('modal-bendahara')" class="flex-1 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800">Batal</button>
+        <button type="button" onclick="verifyBendaharaPassword()" class="flex-1 py-2 rounded-lg bg-sky-700 hover:bg-sky-800 text-white text-xs font-semibold shadow">Masuk</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ==================== MODAL FORM TRANSAKSI KAS ==================== -->
+  <div id="modal-transaksi" class="modal-overlay">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
+      <div class="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">
+        <h3 class="font-bold text-base text-slate-900 dark:text-white" id="modal-transaksi-title">Catat Transaksi Kas</h3>
+        <button type="button" onclick="closeModal('modal-transaksi')" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+      </div>
+      <form onsubmit="saveTransaksi(event)" class="space-y-3 text-xs">
+        <input type="hidden" id="tx-jenis" value="MASUK">
+        <div>
+          <label class="block font-medium mb-1">Tanggal Transaksi</label>
+          <input type="date" id="tx-tanggal" required class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800">
+        </div>
+        <div>
+          <label class="block font-medium mb-1">Keterangan / Uraian</label>
+          <input type="text" id="tx-keterangan" required placeholder="Contoh: Iuran Kas Gugus SDN..." class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800">
+        </div>
+        <div>
+          <label class="block font-medium mb-1">Kategori (Ketik Bebas Manual)</label>
+          <input type="text" list="kategori-list" id="tx-kategori" required placeholder="Ketik kategori baru atau pilih saran..." class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800">
+          <datalist id="kategori-list">
+            <option value="Iuran Bulanan"></option>
+            <option value="Kegiatan KKG"></option>
+            <option value="ATK & Fotokopi"></option>
+            <option value="Konsumsi Rapat"></option>
+            <option value="Honor Narasumber"></option>
+            <option value="Transportasi"></option>
+            <option value="Perlengkapan Acara"></option>
+            <option value="Lain-lain"></option>
+          </datalist>
+        </div>
+        <div>
+          <label class="block font-medium mb-1">Nominal (Rupiah)</label>
+          <input type="number" id="tx-nominal" required placeholder="0" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono text-sm">
+        </div>
+        <div class="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <button type="button" onclick="closeModal('modal-transaksi')" class="px-4 py-2 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">Batal</button>
+          <button type="submit" class="px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-lg font-semibold shadow">Simpan Data</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- ==================== MODAL KEPANITIAAN ==================== -->
+  <div id="modal-kepanitiaan" class="modal-overlay">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
+      <div class="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">
+        <h3 class="font-bold text-base text-slate-900 dark:text-white">Tambah Anggota Kepanitiaan</h3>
+        <button type="button" onclick="closeModal('modal-kepanitiaan')" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+      </div>
+      <form onsubmit="saveKepanitiaan(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-medium mb-1">Nama Lengkap & Gelar</label>
+          <input type="text" id="panitia-nama" required placeholder="Nama Lengkap" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800">
+        </div>
+        <div>
+          <label class="block font-medium mb-1">Jabatan dalam FKKG</label>
+          <input type="text" id="panitia-jabatan" required placeholder="Contoh: Ketua FKKG, Sekretaris, Bendahara, Sie Acara" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800">
+        </div>
+        <div>
+          <label class="block font-medium mb-1">Asal Sekolah</label>
+          <input type="text" id="panitia-sekolah" required placeholder="Contoh: SDN Prambon 1" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block font-medium mb-1">NIP</label>
+            <input type="text" id="panitia-nip" placeholder="NIP" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono">
+          </div>
+          <div>
+            <label class="block font-medium mb-1">No. WhatsApp</label>
+            <input type="text" id="panitia-kontak" placeholder="0812..." class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono">
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <button type="button" onclick="closeModal('modal-kepanitiaan')" class="px-4 py-2 border rounded-lg hover:bg-slate-50">Batal</button>
+          <button type="submit" class="px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-lg font-semibold shadow">Simpan Anggota</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- ==================== MODAL PROGRAM KEGIATAN ==================== -->
+  <div id="modal-program" class="modal-overlay">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800">
+      <div class="flex items-center justify-between mb-3 border-b border-slate-100 dark:border-slate-800 pb-2">
+        <h3 class="font-bold text-base text-slate-900 dark:text-white">Tambah Program Kegiatan</h3>
+        <button type="button" onclick="closeModal('modal-program')" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+      </div>
+      <form onsubmit="saveProgram(event)" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-medium mb-1">Nama Kegiatan</label>
+          <input type="text" id="prog-nama" required placeholder="Contoh: Workshop Modul Ajar Kurikulum Merdeka" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800">
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block font-medium mb-1">Semester</label>
+            <select id="prog-semester" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800">
+              <option value="Ganjil">Semester Ganjil</option>
+              <option value="Genap">Semester Genap</option>
+              <option value="Tahunan">1 Tahun Ajaran</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-medium mb-1">Tahun Ajaran</label>
+            <input type="text" id="prog-tahun" value="2026/2027" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="block font-medium mb-1">Rencana Waktu</label>
+            <input type="text" id="prog-waktu" placeholder="Contoh: Oktober 2026" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800">
+          </div>
+          <div>
+            <label class="block font-medium mb-1">Estimasi Anggaran</label>
+            <input type="number" id="prog-anggaran" placeholder="Rp" class="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 font-mono">
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <button type="button" onclick="closeModal('modal-program')" class="px-4 py-2 border rounded-lg hover:bg-slate-50">Batal</button>
+          <button type="submit" class="px-4 py-2 bg-sky-700 hover:bg-sky-800 text-white rounded-lg font-semibold shadow">Simpan Program</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- ==================== LOGIKA JAVASCRIPT ==================== -->
+  <script>
+    lucide.createIcons();
+
+    // TEMPLATE KOP SURAT JPG ASLI PERMANEN (DARI FILE JPG YANG DIUNGGAH)
+    const KOP_SURAT_IMAGE_JPEG = "data:image/jpeg;base64,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";
+
+    // 1. DATA STATE
+    let db = {
+      kepanitiaan: JSON.parse(localStorage.getItem('fkkg_kepanitiaan')) || [
+        { id: '1', nama: 'EKO FERRY DARYANTO, S.Pd', jabatan: 'Ketua FKKG', sekolah: 'SDN Prambon', nip: '198201262008011010', kontak: '081234567890' },
+        { id: '2', nama: 'RURY MEIYANTY, S.Pd', jabatan: 'Sekretaris', sekolah: 'SDN Kedungwonokerto', nip: '198205132011012010', kontak: '082345678901' },
+        { id: '3', nama: 'BENDAHARA FKKG, S.Pd', jabatan: 'Bendahara', sekolah: 'SDN Wirobiting', nip: '198503152010012015', kontak: '083456789012' }
+      ],
+      keuangan: JSON.parse(localStorage.getItem('fkkg_keuangan')) || [
+        { id: '1', tanggal: '2026-08-10', keterangan: 'Saldo Awal Kas FKKG', jenis: 'MASUK', nominal: 2500000, kategori: 'Iuran Bulanan' },
+        { id: '2', tanggal: '2026-08-20', keterangan: 'Pembelian Kertas HVS & Konsumsi Rapat Pengurus', jenis: 'KELUAR', nominal: 350000, kategori: 'Konsumsi Rapat' }
+      ],
+      program: JSON.parse(localStorage.getItem('fkkg_program')) || [
+        { id: '1', kegiatan: 'Rapat Pembentukan Pengurus Baru FKKG', semester: 'Ganjil', tahun: '2026/2027', waktu: 'Juni 2026', anggaran: 500000, status: 'Terlaksana' },
+        { id: '2', kegiatan: 'Workshop Digitalisasi Media Pembelajaran Interaktif', semester: 'Ganjil', tahun: '2026/2027', waktu: 'Oktober 2026', anggaran: 2000000, status: 'Direncanakan' }
+      ]
+    };
+
+    function saveLocal() {
+      localStorage.setItem('fkkg_kepanitiaan', JSON.stringify(db.kepanitiaan));
+      localStorage.setItem('fkkg_keuangan', JSON.stringify(db.keuangan));
+      localStorage.setItem('fkkg_program', JSON.stringify(db.program));
+      // Sinkronkan ke surat seketika setiap data tersimpan
+      syncPengurusToSurat();
+    }
+
+    // SINKRONISASI OTOMATIS: KETUA & SEKRETARIS KE FORM SURAT
+    function syncPengurusToSurat() {
+      // Cari Ketua FKKG
+      const ketuaObj = db.kepanitiaan.find(p => p.jabatan.toLowerCase().includes('ketua')) || {
+        nama: 'EKO FERRY DARYANTO, S.Pd',
+        nip: '198201262008011010'
+      };
+
+      // Cari Sekretaris / Wakil FKKG
+      const sekrObj = db.kepanitiaan.find(p => p.jabatan.toLowerCase().includes('sekretaris') || p.jabatan.toLowerCase().includes('wakil')) || {
+        nama: 'RURY MEIYANTY, S.Pd',
+        nip: '198205132011012010'
+      };
+
+      document.getElementById('inp-ketua').value = ketuaObj.nama;
+      document.getElementById('inp-nip-ketua').value = ketuaObj.nip;
+      document.getElementById('inp-sekretaris').value = sekrObj.nama;
+      document.getElementById('inp-nip-sekretaris').value = sekrObj.nip;
+
+      updateLetterPreview();
+    }
+
+    // SINKRONISASI KE GOOGLE APPS SCRIPT / GOOGLE SHEETS
+    function syncAllToCloud() {
+      const statusText = document.getElementById('sync-status-text');
+      statusText.innerText = 'Menyimpan...';
+
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(function() {
+            statusText.innerText = 'Tersimpan di Sheet!';
+            setTimeout(() => statusText.innerText = 'Simpan ke Sheets', 3000);
+          })
+          .withFailureHandler(function(err) {
+            console.error(err);
+            saveLocal();
+            statusText.innerText = 'Tersimpan Lokal';
+            setTimeout(() => statusText.innerText = 'Simpan ke Sheets', 3000);
+          })
+          .doPost({
+            postData: {
+              contents: JSON.stringify({
+                action: 'saveAll',
+                kepanitiaan: db.kepanitiaan,
+                keuangan: db.keuangan,
+                program: db.program
+              })
+            }
+          });
+      } else {
+        saveLocal();
+        statusText.innerText = 'Tersimpan Lokal!';
+        setTimeout(() => statusText.innerText = 'Simpan ke Sheets', 3000);
+      }
+    }
+
+    // 2. HELPER MODAL POPUP
+    function openModal(modalId) {
+      const el = document.getElementById(modalId);
+      if (el) el.classList.add('active');
+    }
+
+    function closeModal(modalId) {
+      const el = document.getElementById(modalId);
+      if (el) el.classList.remove('active');
+    }
+
+    // 3. FULL AKSES BENDAHARA (PASSWORD: MAJU)
+    let isBendahara = false;
+    let pendingAction = null;
+    let pendingDeleteId = null;
+
+    function openLoginModal(action = null, deleteId = null) {
+      pendingAction = action;
+      pendingDeleteId = deleteId;
+      const inputPass = document.getElementById('inp-bendahara-pass');
+      inputPass.value = '';
+      document.getElementById('msg-bendahara-error').classList.add('hidden');
+      openModal('modal-bendahara');
+      setTimeout(() => inputPass.focus(), 150);
+    }
+
+    // Dukungan Tombol Enter saat input password
+    document.getElementById('inp-bendahara-pass').addEventListener('keyup', function(e) {
+      if (e.key === 'Enter') {
+        verifyBendaharaPassword();
+      }
+    });
+
+    function verifyBendaharaPassword() {
+      const input = document.getElementById('inp-bendahara-pass').value.trim().toUpperCase();
+      if (input === 'MAJU') {
+        isBendahara = true;
+        closeModal('modal-bendahara');
+        updateBendaharaUI();
+
+        if (pendingAction === 'MASUK' || pendingAction === 'KELUAR') {
+          openModalFormTransaksi(pendingAction);
+        } else if (pendingAction === 'HAPUS' && pendingDeleteId) {
+          executeHapusKas(pendingDeleteId);
+        }
+        pendingAction = null;
+        pendingDeleteId = null;
+      } else {
+        document.getElementById('msg-bendahara-error').classList.remove('hidden');
+      }
+    }
+
+    function logoutBendahara() {
+      isBendahara = false;
+      updateBendaharaUI();
+    }
+
+    function updateBendaharaUI() {
+      const btnLogin = document.getElementById('btn-login-bendahara');
+      const badgeLogged = document.getElementById('bendahara-logged-badge');
+
+      if (isBendahara) {
+        btnLogin.classList.add('hidden');
+        badgeLogged.classList.remove('hidden');
+        badgeLogged.classList.add('flex');
+      } else {
+        btnLogin.classList.remove('hidden');
+        badgeLogged.classList.add('hidden');
+        badgeLogged.classList.remove('flex');
+      }
+    }
+
+    function handleBtnCatat(jenis) {
+      if (isBendahara) {
+        openModalFormTransaksi(jenis);
+      } else {
+        openLoginModal(jenis);
+      }
+    }
+
+    function openModalFormTransaksi(jenis) {
+      document.getElementById('tx-jenis').value = jenis;
+      document.getElementById('tx-tanggal').value = new Date().toISOString().split('T')[0];
+      document.getElementById('tx-keterangan').value = '';
+      document.getElementById('tx-kategori').value = '';
+      document.getElementById('tx-nominal').value = '';
+      document.getElementById('modal-transaksi-title').innerText = jenis === 'MASUK' ? 'Catat Pemasukan Kas' : 'Catat Pengeluaran Kas';
+      openModal('modal-transaksi');
+      setTimeout(() => document.getElementById('tx-keterangan').focus(), 150);
+    }
+
+    function saveTransaksi(e) {
+      e.preventDefault();
+      const jenis = document.getElementById('tx-jenis').value;
+      const tgl = document.getElementById('tx-tanggal').value;
+      const ket = document.getElementById('tx-keterangan').value;
+      const kat = document.getElementById('tx-kategori').value.trim() || 'Lain-lain';
+      const nom = parseFloat(document.getElementById('tx-nominal').value) || 0;
+
+      const newTx = {
+        id: Date.now().toString(),
+        tanggal: tgl,
+        keterangan: ket,
+        jenis: jenis,
+        nominal: nom,
+        kategori: kat
+      };
+
+      db.keuangan.push(newTx);
+      saveLocal();
+      renderKeuangan();
+      closeModal('modal-transaksi');
+      syncAllToCloud();
+    }
+
+    function handleHapusKas(id) {
+      if (isBendahara) {
+        executeHapusKas(id);
+      } else {
+        openLoginModal('HAPUS', id);
+      }
+    }
+
+    function executeHapusKas(id) {
+      db.keuangan = db.keuangan.filter(item => item.id !== id);
+      saveLocal();
+      renderKeuangan();
+      syncAllToCloud();
+    }
+
+    function renderKeuangan() {
+      const tbody = document.getElementById('tbl-keuangan-body');
+      tbody.innerHTML = '';
+
+      let totalMasuk = 0;
+      let totalKeluar = 0;
+
+      db.keuangan.forEach(tx => {
+        const isMasuk = tx.jenis === 'MASUK';
+        if (isMasuk) totalMasuk += Number(tx.nominal);
+        else totalKeluar += Number(tx.nominal);
+
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50 dark:hover:bg-slate-800/40 transition';
+        tr.innerHTML = `
+          <td class="py-3 px-4 whitespace-nowrap">${tx.tanggal}</td>
+          <td class="py-3 px-4 font-medium text-slate-800 dark:text-slate-200">${tx.keterangan}</td>
+          <td class="py-3 px-4"><span class="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[10px] font-medium">${tx.kategori}</span></td>
+          <td class="py-3 px-4 text-right font-mono font-medium text-emerald-600">${isMasuk ? 'Rp ' + Number(tx.nominal).toLocaleString('id-ID') : '-'}</td>
+          <td class="py-3 px-4 text-right font-mono font-medium text-rose-600">${!isMasuk ? 'Rp ' + Number(tx.nominal).toLocaleString('id-ID') : '-'}</td>
+          <td class="py-3 px-4 text-center">
+            <button onclick="handleHapusKas('${tx.id}')" title="Hapus Kas" class="p-1 text-slate-400 hover:text-rose-600 transition">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('total-masuk').innerText = 'Rp ' + totalMasuk.toLocaleString('id-ID');
+      document.getElementById('total-keluar').innerText = 'Rp ' + totalKeluar.toLocaleString('id-ID');
+      document.getElementById('saldo-akhir').innerText = 'Rp ' + (totalMasuk - totalKeluar).toLocaleString('id-ID');
+      lucide.createIcons();
+    }
+
+    // 4. KEPANITIAAN & PROGRAM
+    function saveKepanitiaan(e) {
+      e.preventDefault();
+      const nama = document.getElementById('panitia-nama').value;
+      const jabatan = document.getElementById('panitia-jabatan').value;
+      const sekolah = document.getElementById('panitia-sekolah').value;
+      const nip = document.getElementById('panitia-nip').value || '-';
+      const kontak = document.getElementById('panitia-kontak').value || '-';
+
+      db.kepanitiaan.push({ id: Date.now().toString(), nama, jabatan, sekolah, nip, kontak });
+      saveLocal(); // otomatis mentrigger syncPengurusToSurat()
+      renderKepanitiaan();
+      closeModal('modal-kepanitiaan');
+      syncAllToCloud();
+    }
+
+    function deleteKepanitiaan(id) {
+      db.kepanitiaan = db.kepanitiaan.filter(p => p.id !== id);
+      saveLocal(); // otomatis mentrigger syncPengurusToSurat()
+      renderKepanitiaan();
+      syncAllToCloud();
+    }
+
+    function renderKepanitiaan() {
+      const tbody = document.getElementById('tbl-kepanitiaan-body');
+      tbody.innerHTML = '';
+      db.kepanitiaan.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50 dark:hover:bg-slate-800/40 transition';
+        tr.innerHTML = `
+          <td class="py-3 px-4 font-semibold text-slate-800 dark:text-slate-100">${p.nama}</td>
+          <td class="py-3 px-4 font-medium text-sky-700 dark:text-sky-400">${p.jabatan}</td>
+          <td class="py-3 px-4">${p.sekolah}</td>
+          <td class="py-3 px-4 font-mono text-slate-500">${p.nip}</td>
+          <td class="py-3 px-4 font-mono">${p.kontak}</td>
+          <td class="py-3 px-4 text-center">
+            <button onclick="deleteKepanitiaan('${p.id}')" class="p-1 text-slate-400 hover:text-rose-600 transition">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      lucide.createIcons();
+    }
+
+    function saveProgram(e) {
+      e.preventDefault();
+      const kegiatan = document.getElementById('prog-nama').value;
+      const semester = document.getElementById('prog-semester').value;
+      const tahun = document.getElementById('prog-tahun').value;
+      const waktu = document.getElementById('prog-waktu').value;
+      const anggaran = parseFloat(document.getElementById('prog-anggaran').value) || 0;
+
+      db.program.push({ id: Date.now().toString(), kegiatan, semester, tahun, waktu, anggaran, status: 'Direncanakan' });
+      saveLocal();
+      renderProgram();
+      closeModal('modal-program');
+      syncAllToCloud();
+    }
+
+    function deleteProgram(id) {
+      db.program = db.program.filter(pr => pr.id !== id);
+      saveLocal();
+      renderProgram();
+      syncAllToCloud();
+    }
+
+    function renderProgram() {
+      const tbody = document.getElementById('tbl-program-body');
+      tbody.innerHTML = '';
+      db.program.forEach(pr => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50 dark:hover:bg-slate-800/40 transition';
+        tr.innerHTML = `
+          <td class="py-3 px-4 font-medium text-slate-800 dark:text-slate-100">${pr.kegiatan}</td>
+          <td class="py-3 px-4">${pr.semester}</td>
+          <td class="py-3 px-4">${pr.tahun}</td>
+          <td class="py-3 px-4">${pr.waktu}</td>
+          <td class="py-3 px-4 font-mono">Rp ${Number(pr.anggaran).toLocaleString('id-ID')}</td>
+          <td class="py-3 px-4"><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold ${pr.status === 'Terlaksana' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">${pr.status}</span></td>
+          <td class="py-3 px-4 text-center">
+            <button onclick="deleteProgram('${pr.id}')" class="p-1 text-slate-400 hover:text-rose-600 transition">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+      lucide.createIcons();
+    }
+
+    // 5. UPDATE PRATINJAU SURAT REALTIME
+    function updateLetterPreview() {
+      document.getElementById('lbl-no-surat').innerText = document.getElementById('inp-no-surat').value;
+      document.getElementById('lbl-tgl-surat').innerText = document.getElementById('inp-tgl-surat').value;
+      document.getElementById('lbl-lampiran').innerText = document.getElementById('inp-lampiran').value;
+      document.getElementById('lbl-perihal').innerText = document.getElementById('inp-perihal').value;
+      document.getElementById('lbl-hari').innerText = document.getElementById('inp-hari').value;
+      document.getElementById('lbl-tgl-kegiatan').innerText = document.getElementById('inp-tgl-kegiatan').value;
+      document.getElementById('lbl-waktu').innerText = document.getElementById('inp-waktu').value;
+      document.getElementById('lbl-tempat').innerText = document.getElementById('inp-tempat').value;
+      document.getElementById('lbl-acara').innerText = document.getElementById('inp-acara').value;
+      
+      document.getElementById('lbl-ketua').innerText = document.getElementById('inp-ketua').value;
+      document.getElementById('lbl-nip-ketua').innerText = document.getElementById('inp-nip-ketua').value;
+      document.getElementById('lbl-sekretaris').innerText = document.getElementById('inp-sekretaris').value;
+      document.getElementById('lbl-nip-sekretaris').innerText = document.getElementById('inp-nip-sekretaris').value;
+      document.getElementById('lbl-k3s').innerText = document.getElementById('inp-k3s').value;
+      document.getElementById('lbl-nip-k3s').innerText = document.getElementById('inp-nip-k3s').value;
+    }
+
+    // GENERATE FILE WORD (.DOC) LENGKAP DENGAN ATURAN MARGIN KEDINASAN & KOP LOGO ASLI PATEN
+    function downloadWordDoc() {
+      const noSurat = document.getElementById('inp-no-surat').value;
+      const tglSurat = document.getElementById('inp-tgl-surat').value;
+      const lampiran = document.getElementById('inp-lampiran').value;
+      const perihal = document.getElementById('inp-perihal').value;
+      const hari = document.getElementById('inp-hari').value;
+      const tglKegiatan = document.getElementById('inp-tgl-kegiatan').value;
+      const waktu = document.getElementById('inp-waktu').value;
+      const tempat = document.getElementById('inp-tempat').value;
+      const acara = document.getElementById('inp-acara').value;
+      const ketua = document.getElementById('inp-ketua').value;
+      const nipKetua = document.getElementById('inp-nip-ketua').value;
+      const sekretaris = document.getElementById('inp-sekretaris').value;
+      const nipSekretaris = document.getElementById('inp-nip-sekretaris').value;
+      const k3s = document.getElementById('inp-k3s').value;
+      const nipK3s = document.getElementById('inp-nip-k3s').value;
+
+      const wordContent = `
+        <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+        <head>
+          <!--[if gte mso 9]>
+          <xml>
+            <w:WordDocument>
+              <w:View>Print</w:View>
+              <w:Zoom>100</w:Zoom>
+              <w:DoNotOptimizeForBrowser/>
+            </w:WordDocument>
+          </xml>
+          <![endif]-->
+          <meta charset="utf-8">
+          <style>
+            @page Section1 {
+              size: 595.3pt 841.9pt; /* A4 */
+              margin: 35.4pt 56.7pt 56.7pt 70.85pt; /* Atas 1.25cm, Kanan 2cm, Bawah 2cm, Kiri 2.5cm */
+              mso-header-margin: 35.4pt;
+              mso-footer-margin: 35.4pt;
+              mso-paper-source: 0;
+            }
+            div.Section1 { page: Section1; }
+            body {
+              font-family: 'Times New Roman', Times, serif;
+              font-size: 12pt;
+              color: #000000;
+              line-height: 1.35;
+            }
+            p { margin: 0 0 4pt 0; text-align: justify; }
+            table { border-collapse: collapse; width: 100%; }
+          </style>
+        </head>
+        <body>
+          <div class="Section1">
+            
+            <!-- KOP SURAT JPG ASLI PATEN PERMANEN -->
+            <table style="width: 100%; margin-bottom: 12pt;">
+              <tr>
+                <td style="text-align: center;">
+                  <img src="${KOP_SURAT_IMAGE_JPEG}" style="width: 100%; max-height: 110pt;" alt="Kop Surat FKKG SD Kec. Prambon">
+                </td>
+              </tr>
+            </table>
+
+            <!-- TANGGAL SURAT -->
+            <table style="margin-bottom: 8pt;">
+              <tr>
+                <td style="width: 50%;"></td>
+                <td style="width: 50%; text-align: right;">Prambon, ${tglSurat}</td>
+              </tr>
+            </table>
+
+            <!-- NOMOR, LAMPIRAN, HAL & TUJUAN -->
+            <table style="margin-bottom: 14pt;">
+              <tr>
+                <td style="width: 15%; vertical-align: top;">Nomor</td>
+                <td style="width: 3%; vertical-align: top;">:</td>
+                <td style="width: 37%; vertical-align: top;">${noSurat}</td>
+                <td style="width: 45%; vertical-align: top; padding-left: 15pt;" rowspan="3">
+                  Kepada<br>
+                  Yth. Bapak/Ibu Kepala Sekolah<br>
+                  SD Negeri/Swasta Se-Kecamatan Prambon<br>
+                  di<br>
+                  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Prambon
+                </td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Lampiran</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top;">${lampiran}</td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Perihal</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top; font-weight: bold;">${perihal}</td>
+              </tr>
+            </table>
+
+            <p style="margin-bottom: 6pt;">Dengan hormat,</p>
+            <p style="text-indent: 28pt; margin-bottom: 8pt;">
+              Dalam rangka keberlanjutan dan peningkatan kegiatan Forum Kelompok Kerja Guru ( FKKG ) Guru SD Kecamatan Prambon, serta sehubungan dengan akan dilaksanakannya pembentukan kepengurusan FKKG yang baru, kami mohon kepada Bapak/Ibu Kepala Sekolah untuk memberikan izin dan menugaskan nama-nama guru sebagaimana terlampir agar dapat hadir dan mengikuti kegiatan tersebut yang akan dilaksanakan pada :
+            </p>
+
+            <!-- JADWAL PELAKSANAAN -->
+            <table style="margin-left: 28pt; width: 90%; margin-bottom: 10pt;">
+              <tr>
+                <td style="width: 90pt; vertical-align: top;">Hari</td>
+                <td style="width: 15pt; vertical-align: top;">:</td>
+                <td style="vertical-align: top;">${hari}</td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Tanggal</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top;">${tglKegiatan}</td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Waktu</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top;">${waktu}</td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Tempat</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top;">${tempat}</td>
+              </tr>
+              <tr>
+                <td style="vertical-align: top;">Acara</td>
+                <td style="vertical-align: top;">:</td>
+                <td style="vertical-align: top; font-weight: bold;">${acara}</td>
+              </tr>
+            </table>
+
+            <p style="text-indent: 28pt; margin-bottom: 24pt;">
+              Demikian surat undangan ini kami sampaikan, atas perhatian dan kerja samanya kami ucapkan terima kasih.
+            </p>
+
+            <!-- TANDA TANGAN PENGURUS (AUTO SINKRON) -->
+            <table style="text-align: center; margin-bottom: 20pt;">
+              <tr>
+                <td style="width: 45%; vertical-align: top;">
+                  Ketua FKKG Kec. Prambon<br><br><br><br><br>
+                  <u><b>${ketua}</b></u><br>
+                  NIP. ${nipKetua}
+                </td>
+                <td style="width: 10%;"></td>
+                <td style="width: 45%; vertical-align: top;">
+                  Sekretaris<br><br><br><br><br>
+                  <u><b>${sekretaris}</b></u><br>
+                  NIP. ${nipSekretaris}
+                </td>
+              </tr>
+            </table>
+
+            <!-- MENGETAHUI K3S PRAMBON -->
+            <table style="text-align: center;">
+              <tr>
+                <td style="width: 25%;"></td>
+                <td style="width: 50%; vertical-align: top;">
+                  Mengetahui<br>
+                  Ketua FKKKS / K3S Kecamatan Prambon<br><br><br><br><br>
+                  <u><b>${k3s}</b></u><br>
+                  NIP. ${nipK3s}
+                </td>
+                <td style="width: 25%;"></td>
+              </tr>
+            </table>
+
+          </div>
+        </body>
+        </html>
+      `;
+
+      const blob = new Blob(['\ufeff' + wordContent], { type: 'application/msword' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Surat_Undangan_FKKG_Prambon_${noSurat.replace(/[\/\\]/g, '_')}.doc`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }
+
+    // 6. TAB & TEMA SIANG/MALAM
+    function switchTab(tab) {
+      ['surat', 'keuangan', 'kepanitiaan', 'program'].forEach(t => {
+        document.getElementById(`view-${t}`).classList.add('hidden');
+        document.getElementById(`tab-${t}`).className = 'tab-btn py-3 px-3 text-sm font-semibold border-b-2 border-transparent text-slate-600 dark:text-slate-400 hover:text-sky-600 flex items-center gap-2 whitespace-nowrap';
+      });
+
+      document.getElementById(`view-${tab}`).classList.remove('hidden');
+      document.getElementById(`tab-${tab}`).className = 'tab-btn py-3 px-3 text-sm font-semibold border-b-2 border-sky-600 text-sky-600 dark:text-sky-400 flex items-center gap-2 whitespace-nowrap';
+    }
+
+    const themeToggleBtn = document.getElementById('theme-toggle');
+    themeToggleBtn.addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('theme-icon').setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+      lucide.createIcons();
+    });
+
+    // 7. EFEK GELOMBANG AIR
+    const canvas = document.getElementById('water-canvas');
+    const ctx = canvas.getContext('2d');
+    let ripples = [];
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function addRipple(x, y, maxR = 60, speed = 2.5) {
+      ripples.push({ x, y, radius: 2, maxRadius: maxR, alpha: 0.5, speed });
+    }
+
+    window.addEventListener('click', (e) => {
+      addRipple(e.clientX, e.clientY, 85, 3.2);
+    });
+
+    let lastScrollY = window.scrollY;
+    window.addEventListener('scroll', () => {
+      const currentScrollY = window.scrollY;
+      if (Math.abs(currentScrollY - lastScrollY) > 15) {
+        addRipple(window.innerWidth / 2 + (Math.random() * 200 - 100), window.innerHeight / 2 + (Math.random() * 200 - 100), 45, 1.8);
+        lastScrollY = currentScrollY;
+      }
+    });
+
+    function animateWater() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const isDark = document.documentElement.classList.contains('dark');
+      const strokeColor = isDark ? '56, 189, 248' : '2, 132, 199';
+
+      for (let i = 0; i < ripples.length; i++) {
+        const r = ripples[i];
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${strokeColor}, ${r.alpha})`;
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+
+        r.radius += r.speed;
+        r.alpha -= 0.015;
+
+        if (r.alpha <= 0 || r.radius >= r.maxRadius) {
+          ripples.splice(i, 1);
+          i--;
+        }
+      }
+      requestAnimationFrame(animateWater);
+    }
+    animateWater();
+
+    // Inisialisasi Tampilan Awal
+    document.getElementById('kop-img-preview').src = KOP_SURAT_IMAGE_JPEG;
+    renderKeuangan();
+    renderKepanitiaan();
+    renderProgram();
+    syncPengurusToSurat();
+  </script>
+</body>
+</html>
